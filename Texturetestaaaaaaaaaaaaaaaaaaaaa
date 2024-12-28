@@ -1,0 +1,10 @@
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    //fragColor = texture(iChannel0, fragCoord.xy/iResolution.xy);
+    vec2 xy = fragCoord.xy / iResolution.xy;//Condensing this into one line
+    vec4 texColor = texture(iChannel0,xy);//Get the pixel at xy from iChannel0
+    texColor.g = texColor.g*xy.x*(.5+.5*(sin(iTime*2.0)))+0.2;
+    texColor.b = texColor.b*xy.y*(.5+.5*(cos(iTime*2.0)));
+    texColor.r = texColor.r*(1.0-xy.y)*(.5+.5*(cos(iTime*2.0)));
+    fragColor = texColor;//Set the screen pixel to that color
+}
