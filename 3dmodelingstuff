@@ -1,0 +1,141 @@
+vec3 BACKGROUND = vec3(0.8, 0.9, 1.0);
+float THRESHOLD_FOR_HIT = 0.01;
+
+float sdfSphere(vec3 p, vec3 center, float radius) {
+    // write the sdf for a sphere centered at <0, 0, -10> with radius 5, or something.
+    vec3 shifted = p - center;
+    
+    // dot(p, p) = p.x^2 + p.y^2 + p.z^2
+    float dist = sqrt(dot(shifted, shifted)) - radius;
+    return dist;
+}
+
+// THE SDF :3
+float sdf(vec3 p) {
+    return min(
+        sdfSphere(p, vec3((10.0 * sin(iTime)-15.0), 3.0 * sin(iTime), -20.0), 10.0),
+        //sdfSphere(p, vec3(3.0, -3.0 * sin(iTime), -20.0), 4.0),
+        sdfSphere(p, vec3(3.0, 3.0, (10.0 * sin(iTime)-15.0)), 3.0)
+    );
+}
+
+
+vec3 ambient() {
+    //ambient reflection constant & ambient lighting color
+    float ambrconst = 0.6;
+    vec3 ambrlcolor = vec3(0.7, 0.7, 0);
+
+    vec3 ambient = ambrconst * ambrlcolor;
+    return ambient;
+}
+
+vec3 calculateNormal(vec3 p) {
+    float thr = THRESHOLD_FOR_HIT;
+    return normalize(vec3(
+        sdf(vec3(p.x+thr, p.y, p.z)) - sdf(vec3(p.x-thr, p.y, p.z)),
+        sdf(vec3(p.x, p.y+thr, p.z)) - sdf(vec3(p.x, p.y-thr, p.z)),
+        sdf(vec3(p.x, p.y, p.z+thr)) - sdf(vec3(p.x, p.y, p.z-thr))
+    ));
+}
+
+vec3 diffusion(vec3 p) {
+    vec3 pointNormal = calculateNormal(p);
+    vec3 lightPosition = vec3(15.0, 20.0, -5.0);
+    vec3 normallp = normalize(lightPosition - p);
+    //diffuse reflection constant
+    float diffrconst = 0.5;
+    float dotLN = dot(lightPosition, normallp);
+    //light intensity
+    vec3 lightint = vec3(0.7, 0.5, 0);
+    vec3 diffuse = diffrconst * dotLN * lightint;
+    return diffuse;
+}
+
+vec3 specularity(vec3 p, vec3 ray) {
+    vec3 pointNormal = calculateNormal(p);
+    vec3 lightPosition = vec3(15.0, 20.0, -5.0);
+    vec3 normallp = normalize(lightPosition - p);
+    //specular reflection constant
+    float specrconst = 0.6;
+    vec3 reflectedray = reflect(normallp, pointNormal);
+    //directionpointing toward viewer
+    vec3 viewerdirect = -ray;
+    float dotRefView = dot(reflectedray, viewerdirect);
+    
+    return vec3(0.0);  // TODO
+}
+
+
+
+// This is the RGB color of any solid at point p.
+// Be creative and you can make interesting textures.
+vec3 color(vec3 p, float distance_traveled, int maxloops) {
+    float floatloops = float(maxloops);
+    float ratio = 1.0 - distance_traveled/floatloops;
+    float quadcolor = -(pow(ratio-1.0, 2.0)) + 1.0;
+    float lincolor = ratio;
+    float sqrtcolor = sqrt(ratio);
+    float scolor2 = 1.1 - sqrt(-0.9*ratio + 1.0);
+    float floorcolor = 0.02 * floor(50.0*ratio);
+    
+    return vec3(floorcolor);
+    
+    //float fog_frac = 1.0 - 150.0 / (150.0 + distance_traveled * distance_traveled);
+    //return fog_frac * BACKGROUND + (1.0 - fog_frac) * vec3(fract(p.x), fract(p.y), 0.3);
+}
+
+
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    // The screen will go from -1 to 1 in the p.y direction
+    // and -1.6-ish to 1.6-ish in the p.x direction (because it's correcting
+    // for the non-square aspect ratio).
+    float scale = 1.0;
+    vec2 screen_coord = fragCoord - vec2(iResolution.x/2.0, iResolution.y/2.0);
+    screen_coord *= 2.0/iResolution.y * 0.5;
+    
+    // Simple assumption: the camera is at the origin (0, 0, 0)
+    // Up is +y, right is +x, TOWARD the camera is +z (weird!)
+    // So objects that show up in the camera's field of view
+    // will have a negative z coordinate.
+    
+    // trace is where we are (and we'll be changing this as we step forward);
+    // ray is a unit vector in the direction we'll be going.
+    vec3 trace = vec3(5.0 * cos(iTime), 4.0 * sin(iTime * 2.0), 0.0);
+    vec3 ray = normalize(vec3(screen_coord.x, screen_coord.y, -1.0));
+    
+    int max_loops_allowed = 64;
+    
+    // Here, do a for loop (or a while) where we do the following:
+    //  1. get the sdf in 3d for the current trace
+    //  2. if the sdf is within a certain threshold of 0.0, or it's negative,
+    //      we have reached our target; we're on the surface of a 3d solid.
+    //      we can break out of the loop and assign the point a color.
+    //  3. if the sdf is above a large number (maybe 100), assume our ray
+    //      has exited the level and we can draw a background color.
+    //  4. if neither of these cases, step trace forward by ray * sdf_value.
+
+    fragColor = vec4(BACKGROUND, 1.0);
+    float distance_traveled = 0.0;
+    
+    for (int cycle = 1; cycle <= max_loops_allowed; cycle++) {
+        float dist = sdf(trace);
+        
+        if (dist <= THRESHOLD_FOR_HIT) {
+            //fragColor = vec4(color(trace, distance_traveled, max_loops_allowed), 1.0);
+            fragColor = vec4(calculateNormal(trace)*0.5+vec3(0.5), 1.0);
+            break;
+        }
+        
+        if (dist > 100.0) {
+            fragColor = vec4(BACKGROUND, 1.0);
+            break;
+        }
+        
+        trace += ray * dist;
+        distance_traveled += dist;
+    }
+
+    //fragColor = vec4(fract(p.x), fract(p.y), 0.2, 1.0);
+}
